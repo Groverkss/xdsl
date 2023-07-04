@@ -133,14 +133,10 @@ class Generic(IRDLOperation):
             if isinstance(input.typ, ShapedType):
                 for shape in input.typ.get_shape():
                     sizes.append(shape)
-            else:
-                raise NotImplementedError("Dynamic shapes are not supported yet")
         for output in self.outputs:
             if isinstance(output.typ, ShapedType):
                 for shape in output.typ.get_shape():
                     sizes.append(shape)
-            else:
-                raise NotImplementedError("Dynamic shapes are not supported yet")
         return sizes
 
     def get_static_loop_ranges(self):
