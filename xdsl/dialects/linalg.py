@@ -4,10 +4,12 @@ from xdsl.dialects.builtin import (
     ArrayAttr,
     AffineMapAttr,
     StringAttr,
+    ShapedType,
     AnyShapedType,
     AnyTensorType,
 )
 from xdsl.ir import Dialect, Attribute, Region, SSAValue, Data, Operation
+from xdsl.ir.affine import AffineMap, AffineExpr
 from xdsl.printer import Printer
 from xdsl.parser import Parser
 from xdsl.traits import IsTerminator
@@ -101,6 +103,49 @@ class Generic(IRDLOperation):
             },
             regions=[body],
         )
+
+    def get_num_loops(self) -> int:
+        return self.indexing_maps.data[0].data.num_dims
+
+    def get_loops_to_shapes_map(self) -> AffineMap:
+        result_exprs: list[AffineExpr] = []
+        for map_attr in self.indexing_maps:
+            map = map_attr.data
+            result_exprs.extend(map.results)
+
+        dims = self.get_num_loops()
+        # FIXME: Check for symbols also. Currently, we do not allow dynamic
+        # shapes so this is not possible.
+        syms = 0
+
+        return AffineMap(dims, syms, result_exprs)
+
+    def get_shapes_to_loops_map(self) -> AffineMap:
+        loops_to_shapes = self.get_loops_to_shapes_map()
+        inverse = loops_to_shapes.inverse_permutation()
+        if not inverse:
+            raise NotImplementedError("Non-invertible map")
+        return inverse
+
+    def get_static_shapes(self) -> list[int]:
+        sizes: list[int] = []
+        for input in self.inputs:
+            if isinstance(input.typ, ShapedType):
+                for shape in input.typ.get_shape():
+                    sizes.append(shape)
+            else:
+                raise NotImplementedError("Dynamic shapes are not supported yet")
+        for output in self.outputs:
+            if isinstance(output.typ, ShapedType):
+                for shape in output.typ.get_shape():
+                    sizes.append(shape)
+            else:
+                raise NotImplementedError("Dynamic shapes are not supported yet")
+        return sizes
+
+    def get_static_loop_ranges(self):
+        shapes_to_loops = self.get_shapes_to_loops_map()
+        return shapes_to_loops.eval(self.get_static_shapes(), [])
 
 
 @irdl_op_definition
